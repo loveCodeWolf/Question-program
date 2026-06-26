@@ -6,4 +6,4 @@ compatibility_date = "2026-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "quiz-db"
-database_id = ""
+database_id = "ce712cc6-8e7e-49e7-82a6-29ed5962dabe"
