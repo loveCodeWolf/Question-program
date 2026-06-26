@@ -25,6 +25,10 @@ async function fetchApi(path, options = {}) {
 
 // ---- 题库 ----
 
+export function getBankList() {
+  return fetchApi("/api/bank/list");
+}
+
 export function getBankCount(bankId) {
   return fetchApi(`/api/bank/count?bankId=${bankId}`);
 }

@@ -106,7 +106,8 @@
 <script type="module">
   import { getRandomQuestions, submitExam } from "./js/api.js";
 
-  const BANK_ID = 1;
+  const params = new URLSearchParams(location.search);
+  const BANK_ID = parseInt(params.get("bankId")) || 1;
   const MIN_PER_QUESTION = 1.5; // 每题1.5分钟
 
   let examQuestions = [];

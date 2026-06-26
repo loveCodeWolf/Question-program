@@ -1,10 +1,15 @@
 {
   "name": "question-program",
   "version": "1.0.0",
+  "private": true,
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "deploy:worker": "wrangler deploy",
+    "deploy:pages": "wrangler pages deploy frontend/ --project-name quiz-app --branch main",
+    "db:init": "wrangler d1 execute quiz-db --file database/init.sql --remote",
+    "db:seed": "node scripts/seed-d1.js",
+    "deploy:all": "npm run deploy:worker && npm run deploy:pages"
   },
   "repository": {
     "type": "git",
@@ -19,5 +24,8 @@
   "homepage": "https://github.com/loveCodeWolf/Question-program#readme",
   "dependencies": {
     "mammoth": "^1.12.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.105.0"
   }
 }

@@ -24,7 +24,18 @@ export default {
 
       // ==================== 题库接口 ====================
 
-      // 1. 获取题库信息
+      // 1. 获取题库列表
+      if (url.pathname === "/api/bank/list" && method === "GET") {
+        result = await db.prepare("SELECT * FROM question_bank ORDER BY bank_id").all();
+        // 补充实际题目数
+        for (const bank of result.results) {
+          const { total } = await db.prepare("SELECT COUNT(*) total FROM questions WHERE bank_id = ?").bind(bank.bank_id).first();
+          bank.total_questions = total;
+        }
+        return jsonResponse(result.results, corsHeaders);
+      }
+
+      // 2. 获取单个题库信息
       if (url.pathname === "/api/bank" && method === "GET") {
         const bankId = url.searchParams.get("bankId");
         result = await db.prepare("SELECT * FROM question_bank WHERE bank_id = ?").bind(bankId).first();

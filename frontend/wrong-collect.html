@@ -39,7 +39,6 @@
     getNoteList, getEasyWrong
   } from "./js/api.js";
 
-  const BANK_ID = 1;
   const TAB_NAMES = { wrong: "错题", collect: "收藏", master: "斩题", note: "笔记", easy: "易错题" };
   const TYPE_BADGE = { judge: "badge-judge", single: "badge-single", multi: "badge-multi" };
   const TYPE_LABEL = { judge: "判断", single: "单选", multi: "多选" };
@@ -48,6 +47,7 @@
 
   // 初始化
   const params = new URLSearchParams(location.search);
+  const BANK_ID = parseInt(params.get("bankId")) || 1;
   const initialTab = params.get("tab") || "wrong";
   currentTab = initialTab;
   document.querySelector(`[data-tab="${initialTab}"]`)?.classList.add("active");

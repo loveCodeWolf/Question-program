@@ -105,21 +105,24 @@
   const btnCollect = $("btnCollect");
   const btnMaster = $("btnMaster");
 
+  // ---- 全局变量 ----
+  let totalQuestions = 0;      // 题库总题数（顺序模式用）
+  let confirmBtn = null;       // 多选题确认按钮
+
   // ---- 初始化 ----
   async function init() {
-    // 获取总题数
     const { total } = await getBankCount(BANK_ID);
+    totalQuestions = total || 0;
 
     if (TYPE === "seq") {
       $("pageTitle").textContent = "顺序练习";
       const startIdx = parseInt(params.get("idx")) || 1;
-      // 预加载当前题
       const q = await getSeqQuestion(BANK_ID, startIdx);
       if (q && !q.error) {
         questionList = [q];
         currentIdx = 0;
-        progressFill.style.width = ((startIdx / total) * 100).toFixed(1) + "%";
-        qCounter.textContent = `${startIdx}/${total}`;
+        updateProgress(startIdx);
+        qCounter.textContent = `${startIdx}/${totalQuestions}`;
       } else {
         qTitle.textContent = "题目不存在或已到最后";
         actionBar.style.display = "none";
@@ -141,6 +144,12 @@
     }
 
     renderQuestion();
+  }
+
+  // ---- 更新进度条 ----
+  function updateProgress(idx) {
+    const pct = totalQuestions > 0 ? ((idx / totalQuestions) * 100).toFixed(1) + "%" : "0%";
+    progressFill.style.width = pct;
   }
 
   // ---- 渲染题目 ----
@@ -167,7 +176,6 @@
     if (q.question_type === "judge") {
       judgeArea.classList.remove("hidden");
       optionsArea.innerHTML = "";
-      // 重置判断按钮
       document.querySelectorAll(".judge-btn").forEach(b => {
         b.className = "judge-btn";
       });
@@ -180,44 +188,66 @@
             <span>${opts[k]}</span>
           </div>
         `).join("");
+
+        // 多选题加确认按钮
+        if (q.question_type === "multi") {
+          optionsArea.innerHTML += `<button class="btn btn-primary" id="confirmMultiBtn" style="margin-top:12px;width:100%;display:none;" onclick="confirmMulti()">确认答案</button>`;
+          confirmBtn = document.getElementById("confirmMultiBtn");
+        } else {
+          confirmBtn = null;
+        }
       } else {
         optionsArea.innerHTML = "";
+        confirmBtn = null;
       }
     }
 
-    // 隐藏解析
+    // 隐藏解析和正确答案
     analysisBox.classList.remove("show");
     analysisContent.textContent = "";
+    const correctEl = document.getElementById("correctAnswer");
+    if (correctEl) correctEl.remove();
 
-    // 更新计数
-    const total = TYPE === "seq"
-      ? (document.getElementById("totalNum2")?.textContent || "?")
-      : questionList.length;
-    qCounter.textContent = `${currentIdx + 1}/${total}`;
-
+    // 更新计数（顺序模式用 sort_index，随机模式用列表索引）
     if (TYPE === "seq") {
-      const idx = q.sort_index;
-      progressFill.style.width = ((idx / (parseInt($("totalNum2")?.textContent) || 100)) * 100).toFixed(1) + "%";
+      qCounter.textContent = `${q.sort_index}/${totalQuestions}`;
+      updateProgress(q.sort_index);
     } else {
+      qCounter.textContent = `${currentIdx + 1}/${questionList.length}`;
       progressFill.style.width = (((currentIdx + 1) / questionList.length) * 100).toFixed(1) + "%";
     }
 
-    // 按钮状态
-    prevBtn.style.visibility = currentIdx === 0 ? "hidden" : "visible";
+    // 按钮状态——上一题：顺序模式根据 sort_index 判断
+    if (TYPE === "seq") {
+      prevBtn.style.visibility = (q.sort_index <= 1) ? "hidden" : "visible";
+    } else {
+      prevBtn.style.visibility = currentIdx === 0 ? "hidden" : "visible";
+    }
     const isLast = TYPE === "seq" ? false : currentIdx >= questionList.length - 1;
     nextBtn.textContent = isLast ? "完成 ✓" : "下一题 →";
 
-    // 隐藏 action bar 直到作答
+    // 隐藏 action bar
     actionBar.style.display = "none";
 
     // 加载用户状态
     loadUserStatus(q.q_id);
 
-    // 滚动到顶部
     window.scrollTo(0, 0);
   }
 
-  // ---- 用户状态（收藏/斩题/笔记） ----
+  // ---- 显示正确答案文字 ----
+  function showCorrectAnswer(stdAns) {
+    // 移除旧的
+    const old = document.getElementById("correctAnswer");
+    if (old) old.remove();
+    const div = document.createElement("div");
+    div.id = "correctAnswer";
+    div.style.cssText = "margin-top:12px;padding:10px 14px;background:#e8f5e9;border-radius:8px;font-size:14px;color:#2e7d32;font-weight:600;";
+    div.textContent = `✅ 正确答案：${stdAns}`;
+    analysisBox.parentNode.insertBefore(div, analysisBox);
+  }
+
+  // ---- 用户状态 ----
   async function loadUserStatus(qId) {
     try {
       const st = await getQuestionStatus(qId);
@@ -229,7 +259,7 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ---- 选择选项（单选） ----
+  // ---- 选择选项 ----
   window.selectOption = function(key) {
     if (window.answered) return;
     const q = window.currentQ;
@@ -241,10 +271,13 @@
       } else {
         window.selectedOpts.push(key);
       }
-      // 更新UI
       document.querySelectorAll(".option-item").forEach(el => {
         el.classList.toggle("selected", window.selectedOpts.includes(el.dataset.key));
       });
+      // 显示/隐藏确认按钮
+      if (confirmBtn) {
+        confirmBtn.style.display = window.selectedOpts.length > 0 ? "block" : "none";
+      }
       return;
     }
     // 单选
@@ -252,20 +285,31 @@
     showAnswer(key);
   };
 
-  // ---- 选择题（单选/多选） ----
+  // ---- 多选题确认 ----
+  window.confirmMulti = function() {
+    if (window.answered) return;
+    const selected = window.selectedOpts.sort().join("");
+    if (!selected) return;
+    showAnswer(selected);
+  };
+
+  // ---- 显示答案 ----
   function showAnswer(selectedKey) {
     window.answered = true;
     const q = window.currentQ;
     const stdAns = q.standard_answer;
     const isMulti = q.question_type === "multi";
 
+    // 隐藏确认按钮
+    if (confirmBtn) confirmBtn.style.display = "none";
+
     // 禁用选项
     document.querySelectorAll(".option-item").forEach(el => {
       el.classList.add("disabled");
     });
 
+    // 标记正确/错误
     if (isMulti) {
-      // 多选题判分
       const selected = window.selectedOpts.sort().join("");
       const sortedStd = stdAns.replace(/[^A-D]/g, "").split("").sort().join("");
       const correct = selected === sortedStd;
@@ -274,10 +318,8 @@
         if (stdAns.includes(key)) el.classList.add("correct");
         if (window.selectedOpts.includes(key) && !stdAns.includes(key)) el.classList.add("wrong");
       });
-      // 多选题自动记录错题
       if (!correct) markWrong(q.q_id);
     } else {
-      // 单选/判断
       document.querySelectorAll(".option-item").forEach(el => {
         const key = el.dataset.key;
         if (key === stdAns) el.classList.add("correct");
@@ -286,13 +328,15 @@
       if (selectedKey !== stdAns) markWrong(q.q_id);
     }
 
+    // 显示正确答案
+    showCorrectAnswer(stdAns);
+
     // 显示解析
     if (q.analysis) {
       analysisContent.textContent = q.analysis;
       analysisBox.classList.add("show");
     }
 
-    // 显示 action bar
     actionBar.style.display = "flex";
   }
 
@@ -313,6 +357,9 @@
 
     if (val !== stdAns) markWrong(q.q_id);
 
+    // 显示正确答案
+    showCorrectAnswer(stdAns);
+
     if (q.analysis) {
       analysisContent.textContent = q.analysis;
       analysisBox.classList.add("show");
@@ -324,6 +371,7 @@
   window.nextQuestion = function() {
     if (TYPE === "seq") {
       const nextIdx = (window.currentQ?.sort_index || 0) + 1;
+      if (nextIdx > totalQuestions) { alert("已经是最后一题了"); return; }
       getSeqQuestion(BANK_ID, nextIdx).then(q => {
         if (q && !q.error) {
           questionList[0] = q;
@@ -338,7 +386,6 @@
         currentIdx++;
         renderQuestion();
       } else {
-        // 返回首页
         location.href = "index.html";
       }
     }

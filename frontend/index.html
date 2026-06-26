@@ -11,14 +11,24 @@
     .bank-info p { font-size: 13px; opacity: 0.85; }
     .greeting { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #666; margin-bottom: 12px; }
     .greeting .avatar { width: 36px; height: 36px; border-radius: 50%; background: #4a6cf7; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
+    .bank-tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; }
+    .bank-tab { flex: 1; min-width: 0; padding: 10px 8px; border-radius: 10px; background: #f5f7fa; border: 2px solid transparent; text-align: center; cursor: pointer; transition: all .2s; }
+    .bank-tab.active { border-color: #4a6cf7; background: #eef1ff; }
+    .bank-tab .name { font-size: 13px; font-weight: 600; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bank-tab.active .name { color: #4a6cf7; }
+    .bank-tab .count { font-size: 11px; color: #999; margin-top: 2px; }
+    .bank-tab.active .count { color: #6c63ff; }
   </style>
 </head>
 <body>
 <div class="container">
+  <!-- 题库切换 -->
+  <div class="bank-tabs" id="bankTabs"></div>
+
   <!-- 题库信息 -->
   <div class="bank-info" id="bankInfo">
-    <h1>新治安管理处罚法（汇总）</h1>
-    <p>创建时间：2026-03-05 09:52 | 总题量：<span id="totalNum">-</span>题</p>
+    <h1 id="bankName">加载中...</h1>
+    <p>总题量：<span id="totalNum">-</span>题</p>
   </div>
 
   <!-- 用户信息 -->
@@ -29,19 +39,19 @@
 
   <!-- 四大功能入口 -->
   <div class="func-row">
-    <div class="func-card" onclick="location.href='wrong-collect.html?tab=wrong'">
+    <div class="func-card" onclick="goPage('wrong-collect.html?tab=wrong')">
       <div class="icon">✕</div>
       <p>错题</p>
     </div>
-    <div class="func-card" onclick="location.href='wrong-collect.html?tab=collect'">
+    <div class="func-card" onclick="goPage('wrong-collect.html?tab=collect')">
       <div class="icon">★</div>
       <p>收藏</p>
     </div>
-    <div class="func-card" onclick="location.href='wrong-collect.html?tab=master'">
+    <div class="func-card" onclick="goPage('wrong-collect.html?tab=master')">
       <div class="icon">✓</div>
       <p>斩题</p>
     </div>
-    <div class="func-card" onclick="location.href='wrong-collect.html?tab=note'">
+    <div class="func-card" onclick="goPage('wrong-collect.html?tab=note')">
       <div class="icon">📝</div>
       <p>笔记</p>
     </div>
@@ -61,8 +71,8 @@
 
   <!-- 扩展功能 -->
   <div class="extra-func">
-    <button onclick="location.href='wrong-collect.html?tab=easy'">📊 易错题专区</button>
-    <button onclick="location.href='exam.html'">📋 模拟考试</button>
+    <button onclick="goPage('wrong-collect.html?tab=easy')">📊 易错题专区</button>
+    <button onclick="goPage('exam.html')">📋 模拟考试</button>
   </div>
 </div>
 
@@ -80,26 +90,71 @@
 </div>
 
 <script type="module">
-  import { getBankCount, loadProgress } from "./js/api.js";
+  import { getBankList, getBankCount, loadProgress } from "./js/api.js";
 
-  const BANK_ID = 1;
+  let BANK_ID = parseInt(localStorage.getItem("quiz_bank_id")) || 1;
+  let bankList = [];
 
   // 用户头像
   const uid = localStorage.getItem("quiz_uid") || "U";
   document.getElementById("avatar").textContent = uid.slice(-2).toUpperCase();
 
-  // 获取总题数
-  getBankCount(BANK_ID).then(data => {
-    document.getElementById("totalNum").textContent = data.total || "-";
-    document.getElementById("totalNum2").textContent = data.total || "-";
-  });
+  // ---- 题库切换 ----
+  async function loadBanks() {
+    bankList = await getBankList();
+    if (!bankList || bankList.length === 0) return;
 
-  // 加载本地进度
-  const saved = loadProgress(BANK_ID);
-  document.getElementById("progressIdx").textContent = saved;
+    const tabsHtml = bankList.map(b => `
+      <div class="bank-tab ${b.bank_id === BANK_ID ? 'active' : ''}" data-id="${b.bank_id}" onclick="switchBank(${b.bank_id})">
+        <div class="name">${b.bank_name}</div>
+        <div class="count">${b.total_questions || '-'}题</div>
+      </div>
+    `).join("");
+    document.getElementById("bankTabs").innerHTML = tabsHtml;
 
-  // 暴露到全局供内联 onclick 使用
+    // 如果 localStorage 存的 BANK_ID 在列表中不存在，默认第一个
+    if (!bankList.find(b => b.bank_id === BANK_ID)) {
+      BANK_ID = bankList[0].bank_id;
+      localStorage.setItem("quiz_bank_id", BANK_ID);
+    }
+
+    updateBankInfo();
+  }
+
+  window.switchBank = function(id) {
+    BANK_ID = id;
+    localStorage.setItem("quiz_bank_id", id);
+    // 更新 tab 高亮
+    document.querySelectorAll(".bank-tab").forEach(el => {
+      el.classList.toggle("active", parseInt(el.dataset.id) === id);
+    });
+    updateBankInfo();
+  };
+
+  async function updateBankInfo() {
+    const bank = bankList.find(b => b.bank_id === BANK_ID);
+    if (bank) {
+      document.getElementById("bankName").textContent = bank.bank_name;
+    }
+
+    const { total } = await getBankCount(BANK_ID);
+    document.getElementById("totalNum").textContent = total || "-";
+    document.getElementById("totalNum2").textContent = total || "-";
+
+    // 加载本地进度
+    const saved = loadProgress(BANK_ID);
+    document.getElementById("progressIdx").textContent = saved;
+    window._savedProgress = saved;
+  }
+
+  // ---- 页面跳转（自动带上 bankId） ----
+  window.goPage = function(path) {
+    const sep = path.includes("?") ? "&" : "?";
+    location.href = path + `${sep}bankId=${BANK_ID}`;
+  };
+
   window.openSeqPractice = function() {
+    const saved = window._savedProgress || loadProgress(BANK_ID);
     location.href = `practice.html?bankId=${BANK_ID}&type=seq&idx=${saved}`;
   };
   window.openRandomModal = function() {
@@ -117,6 +172,9 @@
   document.getElementById("randomModal").addEventListener("click", function(e) {
     if (e.target === this) this.classList.remove("active");
   });
+
+  // ---- 启动 ----
+  loadBanks();
 </script>
 </body>
 </html>
