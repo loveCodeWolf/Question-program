@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>错题/收藏/斩题/笔记</title>
+  <link rel="stylesheet" href="./css/main.css">
+</head>
+<body>
+<div class="container">
+  <!-- 顶栏 -->
+  <div class="page-header">
+    <button class="btn-back" onclick="location.href='index.html'">‹</button>
+    <h1 id="pageTitle">错题</h1>
+    <span style="width:40px;"></span>
+  </div>
+
+  <!-- Tab -->
+  <div class="tabs" id="tabBar">
+    <div class="tab-item active" data-tab="wrong" onclick="switchTab('wrong')">错题 <span class="tab-count" id="countWrong"></span></div>
+    <div class="tab-item" data-tab="collect" onclick="switchTab('collect')">收藏 <span class="tab-count" id="countCollect"></span></div>
+    <div class="tab-item" data-tab="master" onclick="switchTab('master')">斩题 <span class="tab-count" id="countMaster"></span></div>
+    <div class="tab-item" data-tab="note" onclick="switchTab('note')">笔记 <span class="tab-count" id="countNote"></span></div>
+    <div class="tab-item" data-tab="easy" onclick="switchTab('easy')">易错</div>
+  </div>
+
+  <!-- 列表 -->
+  <div id="listArea">
+    <div class="empty-state">
+      <div class="icon">📭</div>
+      <p>暂无数据</p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import {
+    getWrongList, getCollectList, getMasterList,
+    getNoteList, getEasyWrong
+  } from "./js/api.js";
+
+  const BANK_ID = 1;
+  const TAB_NAMES = { wrong: "错题", collect: "收藏", master: "斩题", note: "笔记", easy: "易错题" };
+  const TYPE_BADGE = { judge: "badge-judge", single: "badge-single", multi: "badge-multi" };
+  const TYPE_LABEL = { judge: "判断", single: "单选", multi: "多选" };
+
+  let currentTab = "wrong";
+
+  // 初始化
+  const params = new URLSearchParams(location.search);
+  const initialTab = params.get("tab") || "wrong";
+  currentTab = initialTab;
+  document.querySelector(`[data-tab="${initialTab}"]`)?.classList.add("active");
+
+  document.getElementById("pageTitle").textContent = TAB_NAMES[initialTab] || "错题";
+
+  loadTab(initialTab);
+
+  // ---- Tab 切换 ----
+  window.switchTab = function(tab) {
+    currentTab = tab;
+    document.querySelectorAll(".tab-item").forEach(el => {
+      el.classList.toggle("active", el.dataset.tab === tab);
+    });
+    document.getElementById("pageTitle").textContent = TAB_NAMES[tab] || "错题";
+    loadTab(tab);
+  };
+
+  // ---- 加载数据 ----
+  async function loadTab(tab) {
+    const area = document.getElementById("listArea");
+    area.innerHTML = '<div class="empty-state"><div class="icon">⏳</div><p>加载中...</p></div>';
+
+    let list = [];
+    try {
+      switch (tab) {
+        case "wrong":
+          list = await getWrongList(BANK_ID);
+          document.getElementById("countWrong").textContent = list.length ? `(${list.length})` : "";
+          break;
+        case "collect":
+          list = await getCollectList(BANK_ID);
+          document.getElementById("countCollect").textContent = list.length ? `(${list.length})` : "";
+          break;
+        case "master":
+          list = await getMasterList(BANK_ID);
+          document.getElementById("countMaster").textContent = list.length ? `(${list.length})` : "";
+          break;
+        case "note":
+          list = await getNoteList(BANK_ID);
+          document.getElementById("countNote").textContent = list.length ? `(${list.length})` : "";
+          break;
+        case "easy":
+          list = await getEasyWrong(BANK_ID);
+          break;
+      }
+    } catch (e) {
+      area.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><p>加载失败，请检查网络</p></div>';
+      return;
+    }
+
+    if (!list || list.length === 0) {
+      area.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无数据</p></div>';
+      return;
+    }
+
+    area.innerHTML = list.map(q => {
+      const title = q.title || "";
+      const typeLabel = TYPE_LABEL[q.question_type] || "单选";
+      const typeBadge = TYPE_BADGE[q.question_type] || "badge-single";
+      let metaHtml = `<span class="tag ${typeBadge}">${typeLabel}</span>`;
+      if (q.wrong_times) metaHtml += `<span>错${q.wrong_times}次</span>`;
+      if (q.collect_time) metaHtml += `<span>收藏于 ${formatTime(q.collect_time)}</span>`;
+      if (q.note_content) metaHtml += `<span>📝有笔记</span>`;
+
+      return `
+        <div class="list-item" onclick="location.href='practice.html?bankId=${BANK_ID}&type=seq&idx=${q.sort_index}'">
+          <div class="q-title">${escapeHtml(title)}</div>
+          <div class="q-meta">${metaHtml}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function formatTime(t) {
+    if (!t) return "";
+    return t.replace("T", " ").substring(0, 16);
+  }
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>

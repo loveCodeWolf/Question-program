@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>模拟考试</title>
+  <link rel="stylesheet" href="./css/main.css">
+  <style>
+    .exam-setting { text-align: center; padding: 40px 0; }
+    .exam-setting .num-input { font-size: 48px; font-weight: 700; color: #4a6cf7; margin: 16px 0; }
+    .exam-setting input { width: 100px; height: 60px; border: 2px solid #ddd; border-radius: 12px; text-align: center; font-size: 28px; }
+    .q-nav-btn { width: 40px; height: 40px; border-radius: 8px; border: 1.5px solid #e0e0e0; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; cursor: pointer; }
+    .q-nav-btn.current { border-color: #4a6cf7; border-width: 2px; font-weight: 600; }
+    .q-nav-btn.answered { background: #4a6cf7; color: #fff; border-color: #4a6cf7; }
+  </style>
+</head>
+<body>
+<div class="container" id="app">
+  <!-- 设置页 -->
+  <div id="settingPage">
+    <div class="page-header">
+      <button class="btn-back" onclick="location.href='index.html'">‹</button>
+      <h1>模拟考试</h1>
+      <span style="width:40px;"></span>
+    </div>
+    <div class="exam-setting">
+      <p style="font-size:16px;color:#666;margin-bottom:8px;">选择考试题量</p>
+      <div class="num-input" id="examNumDisplay">20</div>
+      <div style="display:flex;gap:10px;justify-content:center;margin-bottom:20px;">
+        <button class="btn btn-outline btn-sm" onclick="adjustNum(-5)">-5</button>
+        <button class="btn btn-outline btn-sm" onclick="adjustNum(-1)">-1</button>
+        <input type="number" id="examNum" value="20" min="5" max="200" onchange="syncDisplay()">
+        <button class="btn btn-outline btn-sm" onclick="adjustNum(1)">+1</button>
+        <button class="btn btn-outline btn-sm" onclick="adjustNum(5)">+5</button>
+      </div>
+      <p class="text-muted">考试时间：<span id="examTimeDisplay">30</span> 分钟</p>
+      <div class="btn-group" style="margin-top:24px;">
+        <button class="btn btn-outline" onclick="location.href='index.html'">返回</button>
+        <button class="btn btn-primary" onclick="startExam()">开始考试</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 考试页 -->
+  <div id="examPage" class="hidden">
+    <div class="exam-header">
+      <div>
+        <div class="exam-progress" id="examProgress">1/20</div>
+        <div class="exam-timer" id="examTimer">30:00</div>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="confirmSubmit()">交卷</button>
+    </div>
+
+    <!-- 题号导航 -->
+    <div class="exam-nav" id="examNav"></div>
+
+    <!-- 当前题目 -->
+    <div class="question-card">
+      <div id="examTypeBadge"></div>
+      <div class="question-title" id="examQTitle">加载中...</div>
+      <div id="examOptions"></div>
+      <div id="examJudgeArea" class="judge-row hidden">
+        <div class="judge-btn" data-value="对" onclick="examSelectJudge('对')">✔ 正确</div>
+        <div class="judge-btn" data-value="错" onclick="examSelectJudge('错')">✘ 错误</div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-outline" id="examPrevBtn" onclick="examPrev()">← 上一题</button>
+      <button class="btn btn-primary" id="examNextBtn" onclick="examNext()">下一题 →</button>
+    </div>
+  </div>
+
+  <!-- 结果页 -->
+  <div id="resultPage" class="hidden">
+    <div class="page-header">
+      <button class="btn-back" onclick="location.href='index.html'">‹</button>
+      <h1>考试结果</h1>
+      <span style="width:40px;"></span>
+    </div>
+    <div class="result-box">
+      <div class="result-score" id="resultScore">0</div>
+      <div class="result-label">得分</div>
+      <div class="result-detail" id="resultDetail">0/0 题正确</div>
+    </div>
+    <div id="resultWrongList"></div>
+    <div class="btn-group">
+      <button class="btn btn-outline" onclick="location.href='index.html'">返回首页</button>
+      <button class="btn btn-primary" onclick="location.href='exam.html'">再来一次</button>
+    </div>
+  </div>
+</div>
+
+<!-- 确认交卷弹窗 -->
+<div class="modal" id="submitModal">
+  <div class="modal-box">
+    <h3>确认交卷</h3>
+    <p id="submitInfo" style="margin-bottom:16px;color:#666;">还有未作答的题目</p>
+    <div class="btns">
+      <button onclick="closeModal()">继续答题</button>
+      <button onclick="doSubmit()">确认交卷</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { getRandomQuestions, submitExam } from "./js/api.js";
+
+  const BANK_ID = 1;
+  const MIN_PER_QUESTION = 1.5; // 每题1.5分钟
+
+  let examQuestions = [];
+  let examAnswers = {};  // { qId: "ans" }
+  let currentExamIdx = 0;
+  let timerInterval = null;
+  let secondsLeft = 0;
+
+  // ---- 设置 ----
+  window.adjustNum = function(delta) {
+    const input = document.getElementById("examNum");
+    let v = parseInt(input.value) + delta;
+    if (v < 5) v = 5;
+    if (v > 200) v = 200;
+    input.value = v;
+    syncDisplay();
+  };
+  window.syncDisplay = function() {
+    const v = parseInt(document.getElementById("examNum").value) || 20;
+    document.getElementById("examNumDisplay").textContent = v;
+    const minutes = Math.ceil(v * MIN_PER_QUESTION);
+    document.getElementById("examTimeDisplay").textContent = minutes;
+  };
+
+  // ---- 开始考试 ----
+  window.startExam = async function() {
+    const num = parseInt(document.getElementById("examNum").value) || 20;
+    document.getElementById("settingPage").classList.add("hidden");
+    document.getElementById("examPage").classList.remove("hidden");
+
+    const list = await getRandomQuestions(BANK_ID, num);
+    if (!list || list.length === 0) {
+      alert("获取题目失败");
+      return;
+    }
+    examQuestions = list;
+    examAnswers = {};
+    currentExamIdx = 0;
+    secondsLeft = Math.ceil(list.length * MIN_PER_QUESTION) * 60;
+
+    renderExamNav();
+    renderExamQuestion();
+    startTimer();
+  };
+
+  // ---- 题号导航 ----
+  function renderExamNav() {
+    const nav = document.getElementById("examNav");
+    nav.innerHTML = examQuestions.map((q, i) => `
+      <div class="exam-nav-item ${i === currentExamIdx ? 'current' : ''}" onclick="examGoTo(${i})">${i + 1}</div>
+    `).join("");
+  }
+
+  // ---- 渲染题目 ----
+  function renderExamQuestion() {
+    const q = examQuestions[currentExamIdx];
+    if (!q) return;
+    const total = examQuestions.length;
+    document.getElementById("examProgress").textContent = `${currentExamIdx + 1}/${total}`;
+
+    // 题型
+    const typeMap = { judge: "判断题", single: "单选题", multi: "多选题" };
+    const badgeMap = { judge: "badge-judge", single: "badge-single", multi: "badge-multi" };
+    document.getElementById("examTypeBadge").innerHTML = `<span class="question-type-badge ${badgeMap[q.question_type] || ""}">${typeMap[q.question_type] || ""}</span>`;
+    document.getElementById("examQTitle").textContent = q.title;
+
+    const prevAns = examAnswers[q.q_id] || "";
+
+    if (q.question_type === "judge") {
+      document.getElementById("examOptions").innerHTML = "";
+      document.getElementById("examJudgeArea").classList.remove("hidden");
+      document.querySelectorAll("#examJudgeArea .judge-btn").forEach(el => {
+        el.className = "judge-btn" + (el.dataset.value === prevAns ? (prevAns === "对" ? " selected-true" : " selected-false") : "");
+      });
+    } else {
+      document.getElementById("examJudgeArea").classList.add("hidden");
+      const opts = q.options || {};
+      const keys = Object.keys(opts);
+      if (keys.length > 0) {
+        if (q.question_type === "multi") {
+          document.getElementById("examOptions").innerHTML = keys.map(k => `
+            <div class="option-item ${prevAns.includes(k) ? 'selected' : ''}" data-key="${k}" onclick="examSelectMulti('${k}')">
+              <span class="opt-key">${k}</span>
+              <span>${opts[k]}</span>
+            </div>
+          `).join("");
+        } else {
+          document.getElementById("examOptions").innerHTML = keys.map(k => `
+            <div class="option-item ${prevAns === k ? 'selected' : ''}" data-key="${k}" onclick="examSelectSingle('${k}')">
+              <span class="opt-key">${k}</span>
+              <span>${opts[k]}</span>
+            </div>
+          `).join("");
+        }
+      }
+    }
+
+    // 更新导航
+    document.querySelectorAll(".exam-nav-item").forEach((el, i) => {
+      el.classList.toggle("current", i === currentExamIdx);
+    });
+
+    document.getElementById("examPrevBtn").style.visibility = currentExamIdx === 0 ? "hidden" : "visible";
+    document.getElementById("examNextBtn").textContent = currentExamIdx >= total - 1 ? "完成" : "下一题 →";
+  }
+
+  window.examGoTo = function(idx) {
+    if (idx >= 0 && idx < examQuestions.length) {
+      currentExamIdx = idx;
+      renderExamQuestion();
+    }
+  };
+
+  window.examSelectSingle = function(key) {
+    const q = examQuestions[currentExamIdx];
+    examAnswers[q.q_id] = key;
+    // 更新UI
+    document.querySelectorAll("#examOptions .option-item").forEach(el => {
+      el.classList.toggle("selected", el.dataset.key === key);
+    });
+    updateExamNavStatus();
+  };
+
+  window.examSelectMulti = function(key) {
+    const q = examQuestions[currentExamIdx];
+    const current = examAnswers[q.q_id] || "";
+    const arr = current ? current.split("") : [];
+    const idx = arr.indexOf(key);
+    if (idx >= 0) arr.splice(idx, 1); else arr.push(key);
+    examAnswers[q.q_id] = arr.sort().join("");
+    document.querySelectorAll("#examOptions .option-item").forEach(el => {
+      el.classList.toggle("selected", (examAnswers[q.q_id] || "").includes(el.dataset.key));
+    });
+    updateExamNavStatus();
+  };
+
+  window.examSelectJudge = function(val) {
+    const q = examQuestions[currentExamIdx];
+    examAnswers[q.q_id] = val;
+    document.querySelectorAll("#examJudgeArea .judge-btn").forEach(el => {
+      el.className = "judge-btn" + (el.dataset.value === val ? (val === "对" ? " selected-true" : " selected-false") : "");
+    });
+    updateExamNavStatus();
+  };
+
+  function updateExamNavStatus() {
+    document.querySelectorAll(".exam-nav-item").forEach((el, i) => {
+      const q = examQuestions[i];
+      if (q && examAnswers[q.q_id]) {
+        el.classList.add("answered");
+      } else {
+        el.classList.remove("answered");
+      }
+    });
+  }
+
+  window.examNext = function() {
+    if (currentExamIdx < examQuestions.length - 1) {
+      currentExamIdx++;
+      renderExamQuestion();
+    } else {
+      confirmSubmit();
+    }
+  };
+
+  window.examPrev = function() {
+    if (currentExamIdx > 0) {
+      currentExamIdx--;
+      renderExamQuestion();
+    }
+  };
+
+  // ---- 计时器 ----
+  function startTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      secondsLeft--;
+      if (secondsLeft <= 0) {
+        clearInterval(timerInterval);
+        alert("时间到！自动交卷");
+        doSubmit();
+        return;
+      }
+      const m = Math.floor(secondsLeft / 60);
+      const s = secondsLeft % 60;
+      document.getElementById("examTimer").textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }, 1000);
+  }
+
+  // ---- 交卷 ----
+  window.confirmSubmit = function() {
+    const total = examQuestions.length;
+    const answered = Object.keys(examAnswers).length;
+    const unanswered = total - answered;
+    document.getElementById("submitInfo").textContent = unanswered > 0 ? `还有 ${unanswered} 题未作答，确认交卷？` : "已完成全部题目，确认交卷？";
+    document.getElementById("submitModal").classList.add("active");
+  };
+  window.closeModal = function() {
+    document.getElementById("submitModal").classList.remove("active");
+  };
+  window.doSubmit = async function() {
+    clearInterval(timerInterval);
+    closeModal();
+
+    // 构建答案数组
+    const answers = examQuestions.map(q => ({
+      qId: q.q_id,
+      ans: examAnswers[q.q_id] || "",
+    }));
+
+    document.getElementById("examPage").classList.add("hidden");
+    document.getElementById("resultPage").classList.remove("hidden");
+
+    const result = await submitExam(BANK_ID, answers);
+    const score = result.score || 0;
+    const total = result.total || answers.length;
+
+    document.getElementById("resultScore").textContent = score;
+    document.getElementById("resultScore").className = "result-score " + (score >= total * 0.6 ? "pass" : "fail");
+    document.getElementById("resultDetail").textContent = `${score}/${total} 题正确（${Math.round(score/total*100)}%）`;
+
+    // 错题列表
+    const wrongList = result.wrongList || [];
+    if (wrongList.length > 0) {
+      const wrongQs = examQuestions.filter(q => wrongList.includes(q.q_id));
+      document.getElementById("resultWrongList").innerHTML = `
+        <h3 style="padding: 0 0 12px;font-size:15px;">❌ 错题回顾（${wrongList.length}题）</h3>
+        ${wrongQs.map(q => `
+          <div class="list-item" onclick="location.href='practice.html?bankId=${BANK_ID}&type=seq&idx=${q.sort_index}'">
+            <div class="q-title">${escapeHtml(q.title)}</div>
+            <div class="q-meta">
+              <span>你的答案：${escapeHtml(examAnswers[q.q_id] || "未作答")}</span>
+              <span>正确答案：${q.standard_answer}</span>
+            </div>
+          </div>
+        `).join("")}
+      `;
+    } else {
+      document.getElementById("resultWrongList").innerHTML = '<div style="text-align:center;padding:20px;color:#2e7d32;">🎉 全部正确！</div>';
+    }
+  };
+
+  function escapeHtml(s) {
+    if (!s) return "";
+    const div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  // 初始化时间显示
+  syncDisplay();
+</script>
+</body>
+</html>

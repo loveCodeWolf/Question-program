@@ -1,0 +1,23 @@
+{
+  "name": "question-program",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/loveCodeWolf/Question-program.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/loveCodeWolf/Question-program/issues"
+  },
+  "homepage": "https://github.com/loveCodeWolf/Question-program#readme",
+  "dependencies": {
+    "mammoth": "^1.12.0"
+  }
+}

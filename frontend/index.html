@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>刷题系统</title>
+  <link rel="stylesheet" href="./css/main.css">
+  <style>
+    .bank-info { background: linear-gradient(135deg, #4a6cf7, #6c63ff); color: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px; }
+    .bank-info h1 { color: #fff; font-size: 22px; margin-bottom: 6px; }
+    .bank-info p { font-size: 13px; opacity: 0.85; }
+    .greeting { display: flex; align-items: center; gap: 8px; font-size: 14px; color: #666; margin-bottom: 12px; }
+    .greeting .avatar { width: 36px; height: 36px; border-radius: 50%; background: #4a6cf7; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 14px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <!-- 题库信息 -->
+  <div class="bank-info" id="bankInfo">
+    <h1>新治安管理处罚法（汇总）</h1>
+    <p>创建时间：2026-03-05 09:52 | 总题量：<span id="totalNum">-</span>题</p>
+  </div>
+
+  <!-- 用户信息 -->
+  <div class="greeting">
+    <div class="avatar" id="avatar">U</div>
+    <span>刷题中...</span>
+  </div>
+
+  <!-- 四大功能入口 -->
+  <div class="func-row">
+    <div class="func-card" onclick="location.href='wrong-collect.html?tab=wrong'">
+      <div class="icon">✕</div>
+      <p>错题</p>
+    </div>
+    <div class="func-card" onclick="location.href='wrong-collect.html?tab=collect'">
+      <div class="icon">★</div>
+      <p>收藏</p>
+    </div>
+    <div class="func-card" onclick="location.href='wrong-collect.html?tab=master'">
+      <div class="icon">✓</div>
+      <p>斩题</p>
+    </div>
+    <div class="func-card" onclick="location.href='wrong-collect.html?tab=note'">
+      <div class="icon">📝</div>
+      <p>笔记</p>
+    </div>
+  </div>
+
+  <!-- 刷题模式 -->
+  <div class="practice-row">
+    <div class="practice-card seq" onclick="openSeqPractice()">
+      <h3>顺序练习</h3>
+      <p>当前进度：<span id="progressIdx">1</span>/<span id="totalNum2">-</span></p>
+    </div>
+    <div class="practice-card random" onclick="openRandomModal()">
+      <h3>随机练习</h3>
+      <p>自定义设置练习量</p>
+    </div>
+  </div>
+
+  <!-- 扩展功能 -->
+  <div class="extra-func">
+    <button onclick="location.href='wrong-collect.html?tab=easy'">📊 易错题专区</button>
+    <button onclick="location.href='exam.html'">📋 模拟考试</button>
+  </div>
+</div>
+
+<!-- 随机刷题弹窗 -->
+<div class="modal" id="randomModal">
+  <div class="modal-box">
+    <h3>随机刷题</h3>
+    <p class="text-muted" style="margin-bottom: 12px;">设置本次随机练习的题量</p>
+    <input type="number" id="randomNum" value="20" min="1" max="200">
+    <div class="btns">
+      <button onclick="closeModal('randomModal')">取消</button>
+      <button onclick="startRandom()">开始刷题</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { getBankCount, loadProgress } from "./js/api.js";
+
+  const BANK_ID = 1;
+
+  // 用户头像
+  const uid = localStorage.getItem("quiz_uid") || "U";
+  document.getElementById("avatar").textContent = uid.slice(-2).toUpperCase();
+
+  // 获取总题数
+  getBankCount(BANK_ID).then(data => {
+    document.getElementById("totalNum").textContent = data.total || "-";
+    document.getElementById("totalNum2").textContent = data.total || "-";
+  });
+
+  // 加载本地进度
+  const saved = loadProgress(BANK_ID);
+  document.getElementById("progressIdx").textContent = saved;
+
+  // 暴露到全局供内联 onclick 使用
+  window.openSeqPractice = function() {
+    location.href = `practice.html?bankId=${BANK_ID}&type=seq&idx=${saved}`;
+  };
+  window.openRandomModal = function() {
+    document.getElementById("randomModal").classList.add("active");
+  };
+  window.closeModal = function(id) {
+    document.getElementById(id).classList.remove("active");
+  };
+  window.startRandom = function() {
+    const num = document.getElementById("randomNum").value || 20;
+    location.href = `practice.html?bankId=${BANK_ID}&type=random&num=${num}`;
+  };
+
+  // 点击弹窗外部关闭
+  document.getElementById("randomModal").addEventListener("click", function(e) {
+    if (e.target === this) this.classList.remove("active");
+  });
+</script>
+</body>
+</html>
