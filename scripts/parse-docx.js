@@ -321,7 +321,7 @@ async function main() {
   }
 
   // 分批 INSERT（每批 50 条）
-  const BATCH_SIZE = 50;
+  const BATCH_SIZE = 5;
   for (let i = 0; i < allQuestions.length; i += BATCH_SIZE) {
     const batch = allQuestions.slice(i, i + BATCH_SIZE);
     sql += `INSERT INTO questions(bank_id, title, question_type, options, standard_answer, analysis, sort_index) VALUES\n`;
